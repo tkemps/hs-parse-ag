@@ -1,0 +1,9 @@
+{
+{-# OPTIONS_GHC -fno-warn-unused-matches -fno-warn-unused-pattern-binds #-}
+{-# LANGUAGE UnicodeSyntax, DeriveDataTypeable, DeriveFoldable, DeriveFunctor, DeriveGeneric, DeriveTraversable, StandaloneDeriving, GeneralizedNewtypeDeriving, ScopedTypeVariables #-}
+module Language.Haskell.AG.SyntaxExt where
+
+import Language.Haskell.Exts.Syntax
+}
+
+include "SyntaxExtCore.ag"

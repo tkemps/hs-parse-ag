@@ -1,0 +1,1080 @@
+ -- A suite of datatypes describing the (semi-concrete) abstract syntax of Haskell 98
+-- <http://www.haskell.org/onlinereport/> plus registered extensions, including:
+--
+--   * multi-parameter type classes with functional dependencies (MultiParamTypeClasses, FunctionalDependencies)
+--
+--   * parameters of type class assertions are unrestricted (FlexibleContexts)
+--
+--   * 'forall' types as universal and existential quantification (RankNTypes, ExistentialQuantification, etc)
+--
+--   * pattern guards (PatternGuards)
+--
+--   * implicit parameters (ImplicitParameters)
+--
+--   * generalised algebraic data types (GADTs)
+--
+--   * template haskell (TemplateHaskell)
+--
+--   * empty data type declarations (EmptyDataDecls)
+--
+--   * unboxed tuples (UnboxedTuples)
+--
+--   * regular patterns (RegularPatterns)
+--
+--   * HSP-style XML expressions and patterns (XmlSyntax)
+--
+-- All nodes in the syntax tree are annotated with something of a user-definable data type.
+-- When parsing, this annotation will contain information about the source location that the
+-- particular node comes from.
+--
+-----------------------------------------------------------------------------
+
+include "SyntaxExtCore.ag"
+
+data Boxed
+    | Boxed
+    | Unboxed
+
+-- | The name of a Haskell module.
+data ModuleName l
+    | ModuleName  loca :: {l}  moduleName :: String
+
+-- | Constructors with special syntax.
+-- These names are never qualified, and always refer to builtin type or
+-- data constructors.
+data SpecialCon l
+    | UnitCon loca :: {l}             -- ^ unit type and data constructor @()@
+    | ListCon loca :: {l}             -- ^ list type constructor @[]@
+    | FunCon  loca :: {l}             -- ^ function type constructor @->@
+    | TupleCon loca :: {l}  b :: Boxed  ary ∷ Int  -- ^ /n/-ary tuple type and data constructors @(,)@ etc, possibly boxed @(\#,\#)@
+    | Cons loca :: {l}                -- ^ list data constructor @(:)@
+    | UnboxedSingleCon loca :: {l}    -- ^ unboxed singleton tuple constructor @(\# \#)@
+    | ExprHole loca :: {l}            -- ^ An expression hole _
+
+data QName l
+    | Qual    loca :: {l}
+              moduleName :: {ModuleName l}
+              name :: (Name {l}) -- ^ name qualified with a module name
+    | UnQual  loca :: {l}  name :: (Name {l}) -- ^ unqualified local name
+    | Special loca :: {l}  specialCon :: {SpecialCon l}          -- ^ built-in constructor with special syntax
+
+-- | This type is used to represent variables, and also constructors.
+data Name l
+    | Ident  loca :: {l} ident :: String   -- ^ /varid/ or /conid/.
+    | Symbol loca :: {l} symbol :: String   -- ^ /varsym/ or /consym/
+
+-- | An implicit parameter name.
+data IPName l
+    | IPDup loca :: {l} ipDup ∷ String -- ^ ?/ident/, non-linear implicit parameter
+    | IPLin loca :: {l} ipLin ∷ String -- ^ %/ident/, linear implicit parameter
+
+
+-- | Possibly qualified infix operators (/qop/), appearing in expressions.
+data QOp l
+    | QVarOp loca :: {l} qVarOp ∷ (QName {l}) -- ^ variable operator (/qvarop/)
+    | QConOp loca :: {l} qConOp ∷ (QName {l}) -- ^ constructor operator (/qconop/)
+
+-- | Operators appearing in @infix@ declarations are never qualified.
+data Op l
+    | VarOp loca :: {l} varOp ∷ (Name {l})    -- ^ variable operator (/varop/)
+    | ConOp loca :: {l} conOp ∷ (Name {l})    -- ^ constructor operator (/conop/)
+
+
+-- | A name (/cname/) of a component of a class or data type in an @import@
+-- or export specification.
+data CName l
+    | VarName loca :: {l} varName ∷ (Name {l}) -- ^ name of a method or field
+    | ConName loca :: {l} conName ∷ (Name {l}) -- ^ name of a data constructor
+
+-- | A complete Haskell source module.
+data Module l
+    | Module loca :: {l}
+             mModuleHead ∷ {Maybe (ModuleHead l)}
+             modulePragmas ∷ {[ModulePragma l]}
+             importDecls ∷ {[ImportDecl l]}
+             decls ∷ (DeclList {l})   -- ^ an ordinary Haskell module
+    | XmlPage loca :: {l}
+              moduleName ∷ {ModuleName l}
+              modulePragmas ∷ {[ModulePragma l]}
+              xName ∷ {XName l}
+              xAttrs ∷ {[XAttr l]}
+              mExp ∷ {Maybe (Exp l)}
+              exps ∷ {[Exp l]}    -- ^ a module consisting of a single XML document.
+                                  -- The ModuleName never appears in the source
+                                  -- but is needed for semantic purposes, it will
+                                  -- be the same as the file name.
+    | XmlHybrid loca :: {l}
+              mModuleHead ∷ {Maybe (ModuleHead l)}
+              modulePragmas ∷ {[ModulePragma l]}
+              importDecls ∷ {[ImportDecl l]}
+              decls ∷ (DeclList {l})
+              xName ∷ {XName l}
+              xAttrs ∷ {[XAttr l]}
+              mExp ∷ {Maybe (Exp l)}
+              exps ∷ {[Exp l]}    -- ^ a hybrid module combining an XML document 
+                                  -- with an ordinary module
+
+-- | The head of a module, including the name and export specification.
+data ModuleHead l
+    | ModuleHead loca :: {l}
+                 moduleName ∷ {ModuleName l}
+                 mWarningText ∷ {Maybe (WarningText l)}
+                 mExportSpecList ∷ {Maybe (ExportSpecList l)}
+
+-- | A top level options pragma, preceding the module header.
+data ModulePragma l
+    | LanguagePragma loca :: {l}
+                     names ∷ {[Name l]}  -- ^ LANGUAGE pragma
+    | OptionsPragma  loca :: {l}
+                     mTool ∷ {Maybe Tool}
+                     optionsPragmaStr ∷ String
+                        -- ^ OPTIONS pragma, possibly qualified with a tool, e.g. OPTIONS_GHC
+    | AnnModulePragma loca :: {l}
+                      annPragma ∷ {Annotation l}
+                        -- ^ ANN pragma with module scope
+
+-- | Recognised tools for OPTIONS pragmas.
+data Tool
+    | GHC | HUGS | NHC98 | YHC | HADDOCK | UnknownTool toolName ∷ String
+
+-- | An import declaration.
+data ImportDecl l
+    | ImportDecl
+        importAnn :: {l}                   -- ^ annotation, used by parser for position of the @import@ keyword.
+        importModule :: {ModuleName l}     -- ^ name of the module imported.
+        importQualified :: Bool          -- ^ imported @qualified@?
+        importSrc :: Bool                -- ^ imported with @{-\# SOURCE \#-}@?
+        importSafe :: Bool               -- ^ Import @safe@?
+        importPkg :: {Maybe String}        -- ^ imported with explicit package name
+        importAs :: {Maybe (ModuleName l)} -- ^ optional alias name in an @as@ clause.
+        importSpecs :: {Maybe (ImportSpecList l)}
+            -- ^ optional list of import specifications.
+
+-- | An explicit import specification list.
+-- A list of import specifications.
+-- The 'Bool' is 'True' if the names are excluded
+-- by @hiding@.
+data ImportSpecList l
+    | ImportSpecList
+        loca :: {l}
+        hiding ∷ Bool
+        importSpecs ∷ {[ImportSpec l]}
+
+
+-- | An import specification, representing a single explicit item imported
+--   (or hidden) from a module.
+data ImportSpec l
+     | IVar loca :: {l}
+            variableName ∷ (Name {l})                  -- ^ variable
+     | IAbs loca :: {l}
+            namespace ∷ (Namespace l)
+            name ∷ (Name {l})    -- ^ @T@: the name of a class, datatype or type synonym.
+     | IThingAll
+            loca :: {l}
+            name ∷ (Name {l}) -- ^ @T(..)@: a class imported with all of its methods, or a datatype imported with all of its constructors.
+     | IThingWith
+            loca :: {l}
+            name ∷ (Name {l})
+            cNames ∷ {[CName l]}  -- ^ @T(C_1,...,C_n)@: a class imported with some of its methods, or a datatype imported with some of its constructors.
+
+-- | Namespaces for imports/exports.
+data Namespace l
+    | NoNamespace loca :: {l}
+    | TypeNamespace loca :: {l}
+    | PatternNamespace loca :: {l}
+
+-- | An explicit export specification.
+data ExportSpecList l
+    | ExportSpecList
+        loca :: {l}
+        exportSpec ∷ {[ExportSpec l]}
+
+-- | An item in a module's export specification.
+data ExportSpec l
+     | EVar
+        loca :: {l}
+        qName ∷ (QName {l})                 -- ^ variable.
+     | EAbs
+        loca :: {l}
+        namespace ∷ {Namespace l}
+        qName ∷ (QName {l})   -- ^ @T@:
+                            --   a class or datatype exported abstractly,
+                            --   or a type synonym.
+     | EThingWith
+        loca :: {l}
+        eWildcard ∷ {EWildcard l}
+        qName ∷ (QName {l})
+        cNames ∷ {[CName l]} -- ^ @T(C_1,...,C_n)@:
+                             --   a class exported with some of its methods, or
+                             --   a datatype exported with some of its constructors.
+     | EModuleContents
+        loca :: {l}
+        moduleName ∷ {ModuleName l} -- ^ @module M@:
+                                    --   re-export a module.
+
+
+-- | Indicates the position of the wildcard in an export list
+data EWildcard l
+    | NoWildcard loca :: {l}
+    | EWildcard loca :: {l} position ∷ Int
+
+-- | Associativity of an operator.
+data Assoc l
+     | AssocNone  loca :: {l} -- ^ non-associative operator (declared with @infix@)
+     | AssocLeft  loca :: {l} -- ^ left-associative operator (declared with @infixl@).
+     | AssocRight loca :: {l} -- ^ right-associative operator (declared with @infixr@)
+
+-- | A top-level declaration.
+data Decl l
+     | TypeDecl
+        loca :: {l}
+        declHead ∷ (DeclHead {l})
+        typ ∷ {Type l}
+     -- ^ A type declaration
+     | TypeFamDecl
+        loca :: {l}
+        declHead ∷ (DeclHead {l})
+        mResultSig ∷ {Maybe (ResultSig l)}
+        mInjectivityInfo ∷ {Maybe (InjectivityInfo l)}
+     -- ^ A type family declaration
+     | ClosedTypeFamDecl
+        loca :: {l}
+        declHead ∷ (DeclHead {l})
+        mResultSig ∷ {Maybe (ResultSig l)}
+        mInjectivityInfo ∷ {Maybe (InjectivityInfo l)}
+        typeEqns ∷ {[TypeEqn l]}
+     -- ^ A closed type family declaration
+     | DataDecl
+        loca :: {l}
+        dataOrNew ∷ {DataOrNew l}
+        mContext ∷ {Maybe (Context l)}
+        declHead ∷ (DeclHead {l})
+        qualConDecls ∷ {[QualConDecl l]}
+        derivings ∷ {[Deriving l]}
+     -- ^ A data OR newtype declaration
+     | GDataDecl
+        loca :: {l}
+        dataOrNew ∷ {DataOrNew l}
+        mContext ∷ {Maybe (Context l)}
+        declHead ∷ (DeclHead {l})
+        mKind ∷ {Maybe (Kind l)}
+        gadtDecls ∷ {[GadtDecl l]}
+        derivings ∷ {[Deriving l]}
+     -- ^ A data OR newtype declaration, GADT style
+     | DataFamDecl
+        loca :: {l}
+        mContext ∷ {Maybe (Context l)}
+        declHead ∷ (DeclHead {l})
+        mResultSig ∷ {Maybe (ResultSig l)}
+     -- ^ A data family declaration
+     | TypeInsDecl
+        loca :: {l}
+        leftType ∷ {Type l}
+        rightType ∷ {Type l}
+     -- ^ A type family instance declaration
+     | DataInsDecl
+        loca :: {l}
+        dataOrNew ∷ {DataOrNew l}
+        typ ∷ {Type l}
+        qualConDecls ∷ {[QualConDecl l]}
+        derivings ∷ {[Deriving l]}
+     -- ^ A data family instance declaration
+     | GDataInsDecl
+        loca :: {l}
+        dataOrNew ∷ {DataOrNew l}
+        typ ∷ {Type l}
+        mKind ∷ {Maybe (Kind l)}
+        gadtDecls ∷ {[GadtDecl l]}
+        derivings ∷ {[Deriving l]}
+     -- ^ A data family instance declaration, GADT style
+     | ClassDecl
+        loca :: {l}
+        mContext ∷ {Maybe (Context l)}
+        declHead ∷ (DeclHead {l})
+        funDeps ∷ {[FunDep l]}
+        mClassDecls ∷ {Maybe [ClassDecl l]}
+     -- ^ A declaration of a type class
+     | InstDecl
+        loca :: {l}
+        mOverlap ∷ {Maybe (Overlap l)}
+        instRule ∷ {InstRule l}
+        mInstDecls ∷ {Maybe [InstDecl l]}
+     -- ^ An declaration of a type class instance
+     | DerivDecl
+        loca ∷ {l}
+        mDerivStrategy ∷ {Maybe (DerivStrategy l)}
+        mOverlap ∷ {Maybe (Overlap l)}
+        instRule ∷ {InstRule l}
+     -- ^ A standalone deriving declaration
+     | InfixDecl
+        loca ∷ {l}
+        assoc ∷ {Assoc l}
+        mFixity ∷ {Maybe Int}
+        ops ∷ {[Op l]}
+     -- ^ A declaration of operator fixity
+     | DefaultDecl
+        loca :: {l}
+        types ∷ {[Type l]}
+     -- ^ A declaration of default types
+     | SpliceDecl
+        loca :: {l}
+        spliceExp ∷ {Exp l}
+     -- ^ A Template Haskell splicing declaration
+     | TypeSig
+        loca :: {l}
+        names ∷ {[Name l]}
+        typ ∷ {Type l}
+     -- ^ A type signature declaration
+     | PatSynSig
+        loca :: {l}
+        names ∷ {[Name l]}
+        mTyVarBind ∷ {Maybe [TyVarBind l]}
+        mContextLeft ∷ {Maybe (Context l)}
+        mContextRight ∷ {Maybe (Context l)}
+        typ ∷ {Type l}
+     -- ^ A pattern synonym signature declation
+     | FunBind
+        loca :: {l}
+        matches ∷ (MatchesList {l})
+     -- ^ A set of function binding clauses
+     | PatBind
+        loca ∷ {l}
+        pat ∷ (Pat {l})
+        rhs ∷ (Rhs {l})
+        {-where-}
+        mBinds ∷ {Maybe (Binds l)}
+     -- ^ A pattern binding
+     | PatSyn
+        loca :: {l}
+        patLeft ∷ (Pat {l})
+        patRight ∷ (Pat {l})
+        patternSynDirection ∷ (PatternSynDirection {l})
+     -- ^ A pattern synonym binding
+     | ForImp
+        loca ∷ {l}
+        callConv ∷ {CallConv l}
+        mSafety ∷ {Maybe (Safety l)}
+        mStr ∷ {Maybe String} -- function name?
+        name ∷ (Name {l})
+        typ ∷ {Type l}
+     -- ^ A foreign import declaration
+     | ForExp
+        loca :: {l}
+        callConv ∷ {CallConv l}
+        mStr ∷ {Maybe String} -- function name?
+        name ∷ (Name {l})
+        typ ∷ {Type l}
+     -- ^ A foreign export declaration
+     | RulePragmaDecl
+        loca :: {l}
+        rules ∷ {[Rule l]}
+     -- ^ A RULES pragma
+     | DeprPragmaDecl
+        loca :: {l}
+        nameStrList ∷ {[([Name l], String)]}
+     -- ^ A DEPRECATED pragma
+     | WarnPragmaDecl
+        loca :: {l}
+        nameStrList ∷ {[([Name l], String)]}
+     -- ^ A WARNING pragma
+     | InlineSig
+        loca :: {l}
+        b ∷ Bool
+        mActivation ∷ {Maybe (Activation l)}
+        qName ∷ (QName {l})
+     -- ^ An INLINE pragma
+     | InlineConlikeSig
+        loca :: {l}
+        mActivation ∷ {Maybe (Activation l)}
+        qName ∷ (QName {l})
+     -- ^ An INLINE CONLIKE pragma
+     | SpecSig
+        loca :: {l}
+        mActivation ∷ {Maybe (Activation l)}
+        qName ∷ (QName {l})
+        types ∷ {[Type l]}
+     -- ^ A SPECIALISE pragma
+     | SpecInlineSig
+        loca :: {l}
+        b ∷ Bool
+        mActivation ∷ {Maybe (Activation l)}
+        qName ∷ (QName {l})
+        types ∷ {[Type l]}
+     -- ^ A SPECIALISE INLINE pragma
+     | InstSig
+        loca :: {l}
+        instRule ∷ {InstRule l}
+     -- ^ A SPECIALISE instance pragma
+     | AnnPragma
+        loca :: {l}
+        annotation ∷ {Annotation l}
+     -- ^ An ANN pragma
+     | MinimalPragma
+        loca :: {l}
+        mBooleanFormula ∷ {Maybe (BooleanFormula l)}
+     -- ^ A MINIMAL pragma
+     | RoleAnnotDecl
+        loca :: {l}
+        qName ∷ (QName {l})
+        roles ∷ {[Role l]}
+     -- ^ A role annotation
+     | CompletePragma
+        loca :: {l}
+        names ∷ {[Name l]}
+        mQName ∷ {Maybe (QName l)}
+     -- ^ A COMPLETE pragma
+
+data  PatternSynDirection l
+    | Unidirectional -- ^ A unidirectional pattern synonym with "<-"
+    | ImplicitBidirectional  -- ^ A bidirectional pattern synonym with "|"
+    | ExplicitBidirectional loca :: {l} decls ∷ {[Decl l]}  -- ^ A birectional pattern synonym with the construction specified.
+
+-- | A type equation as found in closed type families.
+data TypeEqn l
+    | TypeEqn loca :: {l}
+              typeLeft ∷ {Type l}
+              typeRight ∷ {Type l}
+
+-- | An annotation through an ANN pragma.
+data Annotation l
+    | Ann
+        loca :: {l}
+        name ∷ (Name {l})
+        exp ∷ {Exp l}
+    -- ^ An annotation for a declared name.
+    | TypeAnn
+        loca :: {l}
+        name ∷ (Name {l})
+        exp ∷ {Exp l}
+    -- ^ An annotation for a declared type.
+    | ModuleAnn
+        loca :: {l}
+        exp ∷ {Exp l}
+    -- ^ An annotation for the defining module.
+
+-- | A boolean formula for MINIMAL pragmas.
+data BooleanFormula l
+    | VarFormula
+        loca :: {l}
+        name ∷ (Name {l})              -- ^ A variable.
+    | AndFormula
+        loca :: {l}
+        booleanFormulas ∷ {[BooleanFormula l]}    -- ^ And boolean formulas.
+    | OrFormula
+        loca :: {l}
+        booleanFormulas ∷ {[BooleanFormula l]}     -- ^ Or boolean formulas.
+    | ParenFormula
+        loca :: {l}
+        booleanFormula ∷ {BooleanFormula l}  -- ^ Parenthesized boolean formulas.
+
+data Role l
+  | Nominal loca :: {l}
+  | Representational loca :: {l}
+  | Phantom loca :: {l}
+  | RoleWildcard loca :: {l}
+
+-- | A flag stating whether a declaration is a data or newtype declaration.
+data DataOrNew l
+    | DataType loca :: {l}
+    | NewType loca :: {l}
+
+-- | Injectivity info for injective type families
+data InjectivityInfo l
+    | InjectivityInfo loca :: {l} name ∷ (Name {l}) names ∷ {[Name l]}
+
+data ResultSig l
+    | KindSig loca :: {l} kind ∷ {Kind l}
+    | TyVarSig loca :: {l} tyVarBind ∷ {TyVarBind l}
+
+-- | The head of a type or class declaration, which consists of the type
+-- or class name applied to some type variables
+--
+-- @class C a b@ is represented as
+--
+-- >DHApp
+-- >   ()
+-- >   (DHApp
+-- >      () (DHead () (Ident () "C")) (UnkindedVar () (Ident () "a")))
+-- >   (UnkindedVar () (Ident () "b"))
+--
+-- (where the annotation type @l@ is instantiated with @()@)
+--
+-- @class (a :< b) c@ is represented as
+--
+-- >DHApp
+-- >   ()
+-- >   (DHParen
+-- >      ()
+-- >      (DHApp
+-- >         ()
+-- >         (DHInfix () (UnkindedVar () (Ident () "a")) (Symbol () ":<"))
+-- >         (UnkindedVar () (Ident () "b"))))
+-- >   (UnkindedVar () (Ident () "c"))
+data DeclHead l
+    | DHead loca ∷ {l} name ∷ (Name {l}) -- ^ type or class name
+    | DHInfix loca :: {l} tyVarBind ∷ {TyVarBind l} name ∷ (Name {l}) -- ^ infix application of the type/class name to the left operand
+    | DHParen loca :: {l} declHead ∷ (DeclHead {l}) -- ^ parenthesized declaration head
+    | DHApp   loca :: {l} declHead ∷ (DeclHead {l}) tyVarBind ∷ {TyVarBind l} -- ^ application to one more type variable
+
+-- | The instance declaration rule, which is, roughly, the part of the instance declaration before the @where@ keyword.
+--
+-- Example: @instance Ord a |> Ord (Maybe a)@ is represented as
+--
+-- >IRule
+-- >   ()
+-- >   Nothing
+-- >   (Just
+-- >      (CxSingle
+-- >         ()
+-- >         (ClassA
+-- >            () (UnQual () (Ident () "Ord")) [ TyVar () (Ident () "a") ])))
+-- >   (IHApp
+-- >      ()
+-- >      (IHCon () (UnQual () (Ident () "Ord")))
+-- >      (TyParen
+-- >         ()
+-- >         (TyApp
+-- >            ()
+-- >            (TyCon () (UnQual () (Ident () "Maybe")))
+-- >            (TyVar () (Ident () "a")))))
+--
+-- An optional explicit forall after @instance@ is supported:
+-- @instance forall a . Ord a |> Ord (Maybe a) where@ becomes
+--
+-- >IRule
+-- >   ()
+-- >   (Just [ UnkindedVar () (Ident () "a") ])
+-- >   ...
+data InstRule l
+    | IRule
+        loca :: {l}
+        mTyVarBinds ∷ {Maybe [TyVarBind l]}
+        mContext ∷ {Maybe (Context l)}
+        instHead ∷ {InstHead l}
+    | IParen
+        loca :: {l}
+        instRule ∷ {InstRule l}
+
+-- See bugs #7 and #31 for more details and use cases for the rationale
+-- of the split. DeclOrInstHead should be used by DeclHead as the name implies.
+
+-- | The instance head. The split between rule/head allow us to represent
+-- @instance (Bounded a |> Bounded [a]) where@ faithfully.
+--
+-- The structure of 'InstHead' follows one of 'DeclHead'.
+--
+-- For example, @instance C (Maybe a) Int where@ is represented as
+--
+-- >IHApp
+-- >   ()
+-- >   (IHApp
+-- >      ()
+-- >      (IHCon () (UnQual () (Ident () "C")))
+-- >      (TyParen
+-- >         ()
+-- >         (TyApp
+-- >            ()
+-- >            (TyCon () (UnQual () (Ident () "Maybe")))
+-- >            (TyVar () (Ident () "a")))))
+-- >   (TyCon () (UnQual () (Ident () "Int")))))
+data InstHead l
+    | IHCon loca :: {l} qName ∷ (QName {l}) -- ^ type or class name
+    | IHInfix loca :: {l} typ ∷ {Type l} qName ∷ (QName {l}) -- ^ infix application of the type/class name to the left operand
+    | IHParen loca :: {l} instHead ∷ {InstHead l} -- ^ parenthesized instance head
+    | IHApp   loca :: {l} instHead ∷ {InstHead l} typ ∷ {Type l} -- ^ application to one more type
+
+
+-- | A deriving clause following a data type declaration.
+data Deriving l
+    | Deriving
+        loca :: {l}
+        mDerivStrategy ∷ {Maybe (DerivStrategy l)}
+        instRules ∷ {[InstRule l]}
+
+-- | Which technique the user explicitly requested when deriving an instance.
+data DerivStrategy l
+  | DerivStock loca :: {l}    -- ^ GHC's \"standard\" strategy, which is to implement a
+                    --   custom instance for the data type. This only works for
+                    --   certain types that GHC knows about (e.g., 'Eq', 'Show',
+                    --   'Functor' when @-XDeriveFunctor@ is enabled, etc.)
+  | DerivAnyclass loca :: {l} -- ^ @-XDeriveAnyClass@
+  | DerivNewtype loca :: {l}  -- ^ @-XGeneralizedNewtypeDeriving@
+
+-- | A binding group inside a @let@ or @where@ clause.
+data Binds l
+    | BDecls  loca :: {l} decls ∷ (DeclList {l}) -- ^ An ordinary binding group
+    | IPBinds loca :: {l} iPBinds ∷ {[IPBind l]}   -- ^ A binding group for implicit parameters
+
+-- | A binding of an implicit parameter.
+data IPBind l | IPBind loca ∷ {l} iPName ∷ (IPName {l}) exp ∷ (Exp {l})
+
+-- | Clauses of a function binding.
+data Match l
+     | Match loca ∷ {l} name ∷ (Name {l}) pats ∷ {[Pat l]} rhs ∷ (Rhs {l}) {-where-} mBinds ∷ {Maybe (Binds l)}
+        -- ^ A clause defined with prefix notation, i.e. the function name
+        --  followed by its argument patterns, the right-hand side and an
+        --  optional where clause.
+     | InfixMatch loca ∷ {l} pat ∷ (Pat {l}) name ∷ (Name {l}) pats ∷ {[Pat l]} rhs ∷ (Rhs {l}) {-where-} mBinds ∷ {Maybe (Binds l)}
+        -- ^ A clause defined with infix notation, i.e. first its first argument
+        --  pattern, then the function name, then its following argument(s),
+        --  the right-hand side and an optional where clause.
+        --  Note that there can be more than two arguments to a function declared
+        --  infix, hence the list of pattern arguments.
+
+
+-- | A single constructor declaration within a data type declaration,
+--   which may have an existential quantification binding.
+data QualConDecl l
+    | QualConDecl loca :: {l}
+        {-forall-} mTyVarBinds ∷ {Maybe [TyVarBind l]} {- . -} mContext ∷ {Maybe (Context l)}
+        {- |> -} conDecl ∷ {ConDecl l}
+
+-- | Declaration of an ordinary data constructor.
+data ConDecl l
+     | ConDecl loca :: {l} name ∷ (Name {l}) types ∷ {[Type l]}
+                -- ^ ordinary data constructor
+     | InfixConDecl loca :: {l} typ1 ∷ {Type l} name ∷ (Name {l}) typ2 ∷ {Type l}
+                -- ^ infix data constructor
+     | RecDecl loca :: {l} name ∷ (Name {l}) fieldDecls ∷ {[FieldDecl l]}
+                -- ^ record constructor
+
+-- | Declaration of a (list of) named field(s).
+data FieldDecl l | FieldDecl loca :: {l} names ∷ {[Name l]} typ ∷ {Type l}
+
+-- | A single constructor declaration in a GADT data type declaration.
+--
+-- If the GADT is declared using the record syntax, e.g.
+--
+-- >data Ty where
+-- >  TCon :: { field1 :: Int, field2 :: Bool } -> Ty
+--
+-- then the fields are stored as a list of 'FieldDecl's, and the final type
+-- (@Ty@ in the above example) is stored in the last 'Type' field.
+--
+-- If the GADT is declared using the ordinary syntax, e.g.
+--
+-- >data Ty where
+-- >  TCon :: Int -> Bool -> Ty
+--
+-- then @'Maybe' ['FieldDecl' l]@ is 'Nothing', and the whole constructor's
+-- type (such as @Int -> Bool -> Ty@) is stored in the last 'Type' field.
+data GadtDecl l
+    | GadtDecl loca :: {l} name ∷ (Name {l}) mFieldDecls ∷ {Maybe [FieldDecl l]} typ ∷ {Type l}
+
+-- | Declarations inside a class declaration.
+data ClassDecl l
+    | ClsDecl    loca :: {l} decl ∷ {Decl l}
+            -- ^ ordinary declaration
+    | ClsDataFam loca :: {l} mContext ∷ {Maybe (Context l)} declHead ∷ (DeclHead {l}) mResultSig ∷ {Maybe (ResultSig l)}
+            -- ^ declaration of an associated data type
+    | ClsTyFam   loca :: {l} declHead ∷ (DeclHead {l}) mResultSig ∷ {Maybe (ResultSig l)} mInjectivityInfo ∷ {Maybe (InjectivityInfo l)}
+            -- ^ declaration of an associated type synonym
+    | ClsTyDef   loca :: {l} typeEqn ∷ {TypeEqn l}
+            -- ^ default choice for an associated type synonym
+    | ClsDefSig  loca :: {l} name ∷ (Name {l}) typ ∷ {Type l}
+            -- ^ default signature
+
+-- | Declarations inside an instance declaration.
+data InstDecl l
+    | InsDecl   loca :: {l} decl ∷ {Decl l}
+            -- ^ ordinary declaration
+    | InsType   loca :: {l} typ1 ∷ {Type l} typ2 ∷ {Type l}
+            -- ^ an associated type definition
+    | InsData   loca :: {l} dataOrNew ∷ {DataOrNew l} typ ∷ {Type l} qualConDecl ∷ {[QualConDecl l]} derivings ∷ {[Deriving l]}
+            -- ^ an associated data type implementation
+    | InsGData  loca :: {l} dataOrNew ∷ {DataOrNew l} typ ∷ {Type l} mKind ∷ {Maybe (Kind l)} gadtDecls ∷ {[GadtDecl l]} derivings ∷ {[Deriving l]}
+            -- ^ an associated data type implemented using GADT style
+
+-- | The type of a constructor argument or field, optionally including
+--   a strictness annotation.
+data BangType l
+     | BangedTy   loca :: {l} -- ^ strict component, marked with \"@!@\"
+     | LazyTy     loca :: {l} -- ^ lazy component, marked with \"@~@\"
+     | NoStrictAnnot loca :: {l} -- ^ No strictness information
+
+data Unpackedness l
+    | Unpack loca :: {l} -- ^ \"@{-\# UNPACK \#-}@\"
+    | NoUnpack loca :: {l} -- ^ \"@{-\# NOUNPACK \#-}@\"
+    | NoUnpackPragma loca :: {l} -- ^ No unpack pragma
+
+-- | The right hand side of a function binding, pattern binding, or a case
+--   alternative.
+data Rhs l
+     | UnGuardedRhs loca :: {l} exp ∷ {Exp l} -- ^ unguarded right hand side (/exp/)
+     | GuardedRhss  loca :: {l} guardedRhss ∷ {[GuardedRhs l]}
+                -- ^ guarded right hand side (/gdrhs/)
+
+-- | A guarded right hand side @|@ /stmts/ @|@ /exp/, or @|@ /stmts/ @->@ /exp/
+--   for case alternatives.
+--   The guard is a series of statements when using pattern guards,
+--   otherwise it will be a single qualifier expression.
+data GuardedRhs l
+     | GuardedRhs loca :: {l} stmts ∷ {[Stmt l]} exp ∷ {Exp l}
+
+-- | A type qualified with a context.
+--   An unqualified type has an empty context.
+data Type l
+     | TyForall loca :: {l}
+        mTyVarBinds ∷ {Maybe [TyVarBind l]}
+        mContext ∷ {Maybe (Context l)}
+        typ ∷ {Type l}                                -- ^ qualified type
+     | TyFun   loca :: {l} typ1 ∷ {Type l} typ2 ∷ {Type l}              -- ^ function type
+     | TyTuple loca :: {l} boxed ∷ Boxed types ∷ {[Type l]}                 -- ^ tuple type, possibly boxed
+     | TyUnboxedSum loca :: {l} types ∷ {[Type l]}                  -- ^ unboxed tuple type
+     | TyList  loca :: {l} typ ∷ {Type l}                       -- ^ list syntax, e.g. [a], as opposed to [] a
+     | TyParArray  loca :: {l} typ ∷ {Type l}                   -- ^ parallel array syntax, e.g. [:a:]
+     | TyApp   loca :: {l} typ1 ∷ {Type l} typ2 ∷ {Type l}              -- ^ application of a type constructor
+     | TyVar   loca :: {l} name ∷ (Name {l})                       -- ^ type variable
+     | TyCon   loca :: {l} qName ∷ (QName {l})                      -- ^ named type or type constructor
+     | TyParen loca :: {l} typ ∷ {Type l}                       -- ^ type surrounded by parentheses
+     | TyInfix loca :: {l} typ1 ∷ {Type l} maybePromotedName ∷ {MaybePromotedName l}
+                          typ2 ∷ {Type l}              -- ^ infix type constructor
+     | TyKind  loca :: {l} typ ∷ {Type l} kind ∷ {Kind l}              -- ^ type with explicit kind signature
+     | TyPromoted loca :: {l} promoted ∷ {Promoted l}                -- ^ @'K@, a promoted data type (-XDataKinds).
+     | TyEquals loca :: {l} typ1 ∷ {Type l} typ2 ∷ {Type l}             -- ^ type equality predicate enabled by ConstraintKinds
+     | TySplice loca :: {l} splice ∷ {Splice l}                    -- ^ template haskell splice type
+     | TyBang loca :: {l} bangType ∷ {BangType l} unpackedness ∷ {Unpackedness l} typ ∷ {Type l}           -- ^ Strict type marked with \"@!@\" or type marked with UNPACK pragma.
+     | TyWildCard loca :: {l} mName ∷ {Maybe (Name l)}            -- ^ Either an anonymous of named type wildcard
+     | TyQuasiQuote loca :: {l} str1 ∷ String str2 ∷ String             -- ^ @[$/name/| /string/ |]@
+
+
+
+data MaybePromotedName l
+    | PromotedName loca :: {l} qName ∷ (QName {l})
+    | UnpromotedName loca :: {l} qName ∷ (QName {l})
+
+
+-- | Bools here are True if there was a leading quote which may be
+-- left out. For example @'[k1,k2]@ means the same thing as @[k1,k2]@.
+data Promoted l
+        | PromotedInteger loca :: {l} integer ∷ Integer str ∷ String -- ^ parsed value and raw string
+        | PromotedString loca :: {l} str1 ∷ String str2 ∷ String -- ^ parsed value and raw string
+        | PromotedCon loca :: {l} b ∷ Bool qName ∷ (QName {l})
+        | PromotedList loca :: {l} b ∷ Bool types ∷ {[Type l]}
+        | PromotedTuple loca :: {l} types ∷ {[Type l]}
+        | PromotedUnit loca :: {l}
+
+-- | A type variable declaration, optionally with an explicit kind annotation.
+data TyVarBind l
+    | KindedVar   loca :: {l} name ∷ (Name {l}) kind ∷ {Kind l} -- ^ variable binding with kind annotation
+    | UnkindedVar loca :: {l} name ∷ (Name {l})           -- ^ ordinary variable binding
+
+-- | An explicit kind annotation.
+data Kind l
+    | KindStar  loca :: {l} -- ^ @*@, the kind of types
+    | KindFn    loca :: {l} kind1 ∷ {Kind l} kind2 ∷ {Kind l}  -- ^ @->@, the kind of a type constructor
+    | KindParen loca :: {l} kind ∷ {Kind l} -- ^ a parenthesised kind
+    | KindVar   loca :: {l} qName ∷ (QName {l}) -- ^ @k@, a kind variable (-XPolyKinds)
+    | KindApp   loca :: {l} kind1 ∷ {Kind l} kind2 ∷ {Kind l}  -- ^ @k1 k2@
+    | KindTuple loca :: {l} kinds ∷ {[Kind l]} -- ^ @'(k1,k2,k3)@, a promoted tuple
+    | KindList  loca :: {l} kind ∷ {Kind l} -- ^ @'[k1]@, a promoted list literal
+
+-- | A functional dependency, given on the form
+--   l1 l2 ... ln -> r2 r3 .. rn
+data FunDep l
+    | FunDep
+        loca :: {l}
+        leftNames ∷ {[Name l]}
+        rightNames ∷ {[Name l]}
+
+-- | A context is a set of assertions
+data Context l
+    | CxSingle loca :: {l} assertion ∷ {Asst l}
+    | CxTuple  loca :: {l} assertionTuple ∷ {[Asst l]}
+    | CxEmpty  loca :: {l}
+
+-- | Class assertions.
+--   In Haskell 98, the argument would be a /tyvar/, but this definition
+--   allows multiple parameters, and allows them to be /type/s.
+--   Also extended with support for implicit parameters and equality constraints.
+data Asst l
+        | ClassA loca :: {l} qName ∷ (QName {l}) types ∷ {[Type l]}           -- ^ ordinary class assertion
+        | AppA loca :: {l} name ∷ (Name {l}) types ∷ {[Type l]}              -- ^ constraint kind assertion, @Dict :: cxt a |> Dict cxt@
+        | InfixA loca :: {l} typ1 ∷ {Type l} qName ∷ (QName {l}) typ2 ∷ {Type l}  -- ^ class assertion where the class name is given infix
+        | IParam loca :: {l} iPName ∷ {IPName l} typ ∷ {Type l}          -- ^ implicit parameter assertion
+        | EqualP loca :: {l} typ1 ∷ {Type l} typ2 ∷ {Type l}            -- ^ type equality constraint
+        | ParenA loca :: {l} asst ∷ {Asst l}                     -- ^ parenthesised class assertion
+        | WildCardA loca :: {l} mName ∷ {Maybe (Name l)}          -- ^ Context Wildcard
+
+
+-- | /literal/
+-- Values of this type hold the abstract value of the literal, along with the
+-- precise string representation used.  For example, @10@, @0o12@ and @0xa@
+-- have the same value representation, but each carry a different string representation.
+data Literal l
+    | Char       loca :: {l} lit ∷ Char     litStr ∷ String     -- ^ character literal
+    | String     loca :: {l} lit ∷ String   litStr ∷ String     -- ^ string literal
+    | Int        loca :: {l} lit ∷ Integer  litStr ∷ String     -- ^ integer literal
+    | Frac       loca :: {l} lit ∷ Rational litStr ∷ String     -- ^ floating point literal
+    | PrimInt    loca :: {l} lit ∷ Integer  litStr ∷ String     -- ^ unboxed integer literal
+    | PrimWord   loca :: {l} lit ∷ Integer  litStr ∷ String     -- ^ unboxed word literal
+    | PrimFloat  loca :: {l} lit ∷ Rational litStr ∷ String     -- ^ unboxed float literal
+    | PrimDouble loca :: {l} lit ∷ Rational litStr ∷ String     -- ^ unboxed double literal
+    | PrimChar   loca :: {l} lit ∷ Char     litStr ∷ String     -- ^ unboxed character literal
+    | PrimString loca :: {l} lit ∷ String   litStr ∷ String     -- ^ unboxed string literal
+
+
+-- | An indication whether a literal pattern has been negated or not.
+data Sign l
+    | Signless loca :: {l}
+    | Negative loca :: {l}
+
+
+-- | Haskell expressions.
+data Exp l
+    | Var loca :: {l} qName ∷ (QName {l}) -- ^ variable
+    | OverloadedLabel loca :: {l} label ∷ String -- ^ Overloaded label #foo
+    | IPVar loca :: {l} iPName ∷ {IPName l} -- ^ implicit parameter variable
+    | Con loca :: {l} qName ∷ (QName {l}) -- ^ data constructor
+    | Lit loca :: {l} literal ∷ {Literal l} -- ^ literal constant
+    | InfixApp loca :: {l} exp1 ∷ {Exp l} qOp ∷ {QOp l} exp2 ∷ {Exp l} -- ^ infix application
+    | App loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l} -- ^ ordinary application
+    | NegApp loca :: {l} exp ∷ {Exp l} -- ^ negation expression @-/exp/@ (unary minus)
+    | Lambda loca :: {l} pats ∷ {[Pat l]} exp ∷ {Exp l} -- ^ lambda expression
+    | Let loca :: {l} binds ∷ {Binds l} exp ∷ {Exp l} -- ^ local declarations with @let@ ... @in@ ...
+    | If loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l} exp3 ∷ {Exp l} -- ^ @if@ /exp/ @then@ /exp/ @else@ /exp/
+    | MultiIf loca :: {l} guardedRhss ∷ {[GuardedRhs l]} -- ^ @if@ @|@ /stmts/ @->@ /exp/ ...
+    | Case loca :: {l} exp ∷ {Exp l} alts ∷ {[Alt l]} -- ^ @case@ /exp/ @of@ /alts/
+    | Do loca :: {l} stmts ∷ {[Stmt l]} -- ^ @do@-expression:
+                                        --   the last statement in the list
+                                        --   should be an expression.
+    | MDo loca :: {l} stmts ∷ {[Stmt l]} -- ^ @mdo@-expression
+    | Tuple loca :: {l} boxed ∷ Boxed exps ∷ {[Exp l]} -- ^ tuple expression
+    | UnboxedSum loca :: {l} int1 ∷ Int int2 ∷ Int exp ∷ {Exp l} -- ^ unboxed sum
+    | TupleSection loca :: {l} boxed ∷ Boxed mExps ∷ {[Maybe (Exp l)]} -- ^ tuple section expression, e.g. @(,,3)@
+    | List loca :: {l} exps ∷ {[Exp l]} -- ^ list expression
+    | ParArray loca :: {l} exps ∷ {[Exp l]} -- ^ parallel array expression
+    | Paren loca :: {l} exp ∷ {Exp l} -- ^ parenthesised expression
+    | LeftSection loca :: {l} exp ∷ {Exp l} qOp ∷ {QOp l} -- ^ left section @(@/exp/ /qop/@)@
+    | RightSection loca :: {l} qOp ∷ {QOp l} exp ∷ {Exp l} -- ^ right section @(@/qop/ /exp/@)@
+    | RecConstr loca :: {l} qName ∷ (QName {l}) fieldUpdates ∷ {[FieldUpdate l]} -- ^ record construction expression
+    | RecUpdate loca :: {l} exp ∷ {Exp l} fieldUpdates ∷ {[FieldUpdate l]} -- ^ record update expression
+    | EnumFrom loca :: {l} exp ∷ {Exp l} -- ^ unbounded arithmetic sequence,
+                                            --   incrementing by 1: @[from ..]@
+    | EnumFromTo loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l} -- ^ bounded arithmetic sequence,
+                                            --   incrementing by 1 @[from .. to]@
+    | EnumFromThen loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l} -- ^ unbounded arithmetic sequence,
+                                            --   with first two elements given @[from, then ..]@
+    | EnumFromThenTo loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l} exp3 ∷ {Exp l}
+                                            -- ^ bounded arithmetic sequence,
+                                            --   with first two elements given @[from, then .. to]@
+    | ParArrayFromTo loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l} -- ^ Parallel array bounded arithmetic sequence,
+                                            --   incrementing by 1 @[:from .. to:]@
+    | ParArrayFromThenTo loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l} exp3 ∷ {Exp l}
+                                            -- ^ bounded arithmetic sequence,
+                                            --   with first two elements given @[:from, then .. to:]@
+    | ListComp loca :: {l} exp ∷ {Exp l} qualStmts ∷ {[QualStmt l]}       -- ^ ordinary list comprehension
+    | ParComp  loca :: {l} exp ∷ {Exp l} qualStmtsList ∷ {[[QualStmt l]]}     -- ^ parallel list comprehension
+    | ParArrayComp  loca :: {l} exp ∷ {Exp l} qualStmtsList ∷ {[[QualStmt l]]} -- ^ parallel array comprehension
+    | ExpTypeSig loca :: {l} exp ∷ {Exp l} typ ∷ {Type l} -- ^ expression with explicit type signature
+
+    | VarQuote loca :: {l} qName ∷ (QName {l}) -- ^ @'x@ for template haskell reifying of expressions
+    | TypQuote loca :: {l} qName ∷ (QName {l}) -- ^ @''T@ for template haskell reifying of types
+    | BracketExp loca :: {l} bracket ∷ {Bracket l} -- ^ template haskell bracket expression
+    | SpliceExp loca :: {l} splice ∷ {Splice l} -- ^ template haskell splice expression
+    | QuasiQuote loca :: {l} qqName ∷ String qqString ∷ String -- ^ quasi-quotaion: @[$/name/| /string/ |]@
+    | TypeApp loca :: {l} typ ∷ {Type l} -- ^ Visible type application
+
+-- Hsx
+    | XTag loca :: {l} xName ∷ {XName l} xAttrs ∷ {[XAttr l]} mExp ∷ {Maybe (Exp l)} exps ∷ {[Exp l]}
+                                            -- ^ xml element, with attributes and children
+    | XETag loca :: {l} xName ∷ {XName l} xAttrs ∷ {[XAttr l]} mExp ∷ {Maybe (Exp l)}
+                                            -- ^ empty xml element, with attributes
+    | XPcdata loca :: {l} pcData ∷ String                      -- ^ PCDATA child element
+    | XExpTag loca :: {l} exp ∷ {Exp l}                     -- ^ escaped haskell expression inside xml
+    | XChildTag loca :: {l} exps ∷ {[Exp l]}                   -- ^ children of an xml element
+
+
+-- Pragmas
+    | CorePragma loca :: {l} str ∷ String exp ∷ {Exp l}      -- ^ CORE pragma
+    | SCCPragma  loca :: {l} str ∷ String exp ∷ {Exp l}      -- ^ SCC pragma
+    | GenPragma  loca :: {l} str ∷ String intPair1 ∷ {(Int, Int)} intPair2 ∷ {(Int, Int)} exp ∷ {Exp l} -- ^ GENERATED pragma
+
+-- Arrows
+    | Proc            loca :: {l} pat ∷ (Pat {l}) exp ∷ {Exp l}     -- ^ arrows proc: @proc@ /pat/ @->@ /exp/
+    | LeftArrApp      loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l}     -- ^ arrow application (from left): /exp/ @-<@ /exp/
+    | RightArrApp     loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l}     -- ^ arrow application (from right): /exp/ @>-@ /exp/
+    | LeftArrHighApp  loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l}     -- ^ higher-order arrow application (from left): /exp/ @-<<@ /exp/
+    | RightArrHighApp loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l}     -- ^ higher-order arrow application (from right): /exp/ @>>-@ /exp/
+
+-- LambdaCase
+    | LCase loca :: {l} alts ∷ {[Alt l]} -- ^ @\case@ /alts/
+
+
+
+-- | The name of an xml element or attribute,
+--   possibly qualified with a namespace.
+data XName l
+    | XName loca :: {l} string ∷ String              -- <name ...
+    | XDomName loca :: {l} string1 ∷ String string2 ∷ String    -- <dom:name ...
+
+
+-- | An xml attribute, which is a name-expression pair.
+data XAttr l | XAttr loca :: {l} xName ∷ {XName l} exp ∷ {Exp l}
+
+
+-- | A template haskell bracket expression.
+data Bracket l
+    | ExpBracket loca :: {l} exp ∷ {Exp l}        -- ^ expression bracket: @[| ... |]@
+    | PatBracket loca :: {l} pat ∷ (Pat {l})        -- ^ pattern bracket: @[p| ... |]@
+    | TypeBracket loca :: {l} typ ∷ {Type l}      -- ^ type bracket: @[t| ... |]@
+    | DeclBracket loca :: {l} decls ∷ {[Decl l]}      -- ^ declaration bracket: @[d| ... |]@
+
+
+-- | A template haskell splice expression
+data Splice l
+    | IdSplice loca :: {l} String           -- ^ variable splice: @$var@
+    | ParenSplice loca :: {l} exp ∷ {Exp l}       -- ^ parenthesised expression splice: @$(/exp/)@
+
+
+-- | The safety of a foreign function call.
+data Safety l
+    | PlayRisky loca :: {l}         -- ^ unsafe
+    | PlaySafe loca :: {l} Bool     -- ^ safe ('False') or threadsafe ('True')
+    | PlayInterruptible loca :: {l} -- ^ interruptible
+
+
+-- | The calling convention of a foreign function call.
+data CallConv l
+    | StdCall loca :: {l}
+    | CCall loca :: {l}
+    | CPlusPlus loca :: {l}
+    | DotNet loca :: {l}
+    | Jvm loca :: {l}
+    | Js loca :: {l}
+    | JavaScript loca :: {l}
+    | CApi loca :: {l}
+
+-- | Recognised tools for OPTIONS pragmas.
+-- | Recognised overlaps for overlap pragmas.
+data Overlap l
+    | NoOverlap loca :: {l}   -- ^ NO_OVERLAP pragma
+    | Overlap loca :: {l}     -- ^ OVERLAP pragma
+    | Overlapping loca :: {l}
+    | Overlaps loca :: {l}
+    | Overlappable loca :: {l}
+    | Incoherent loca :: {l}  -- ^ INCOHERENT pragma
+
+
+-- | Activation clause of a RULES pragma.
+data Activation l
+    | ActiveFrom   loca :: {l} Int
+    | ActiveUntil  loca :: {l} Int
+
+
+-- | The body of a RULES pragma.
+data Rule l
+    | Rule loca :: {l} string ∷ String mActivation ∷ {Maybe (Activation l)} mRuleVars ∷ {Maybe [RuleVar l]} exp1 ∷ {Exp l} exp2 ∷ {Exp l}
+
+
+-- | Variables used in a RULES pragma, optionally annotated with types
+data RuleVar l
+    | RuleVar loca :: {l} name ∷ (Name {l})
+    | TypedRuleVar loca :: {l} name ∷ (Name {l}) typ ∷ {Type l}
+
+
+-- | Warning text to optionally use in the module header of e.g.
+--   a deprecated module.
+data WarningText l
+    | DeprText loca :: {l} String
+    | WarnText loca :: {l} String
+
+
+
+-- | A pattern, to be matched against a value.
+data Pat l
+    | PVar loca :: {l} name ∷ (Name {l}) -- ^ variable
+    | PLit loca :: {l} sign ∷ (Sign {l}) literal ∷ (Literal {l}) -- ^ literal constant
+    | PNPlusK loca ∷ {l} name ∷ (Name {l}) integer ∷ Integer -- ^ n+k pattern
+    | PInfixApp loca :: {l} pat1 ∷ (Pat {l}) qName ∷ (QName {l}) pat2 ∷ (Pat {l}) -- ^ pattern with an infix data constructor
+    | PApp loca :: {l} qName ∷ (QName {l}) pats ∷ {[Pat l]} -- ^ data constructor and argument patterns
+    | PTuple loca :: {l} boxed ∷ Boxed pats ∷ {[Pat l]} -- ^ tuple pattern
+    | PUnboxedSum loca :: {l} int1 ∷ Int int2 ∷ Int pat ∷ (Pat {l}) -- ^ unboxed sum
+    | PList loca :: {l} pats ∷ {[Pat l]} -- ^ list pattern
+    | PParen loca :: {l} pat ∷ (Pat {l}) -- ^ parenthesized pattern
+    | PRec loca :: {l} qName ∷ (QName {l}) patFields ∷ {[PatField l]} -- ^ labelled pattern, record style
+    | PAsPat loca :: {l} name ∷ (Name {l}) pat ∷ (Pat {l}) -- ^ @\@@-pattern
+    | PWildCard loca :: {l} -- ^ wildcard pattern: @_@
+    | PIrrPat loca :: {l} pat ∷ (Pat {l}) -- ^ irrefutable pattern: @~/pat/@
+    | PatTypeSig loca :: {l} pat ∷ (Pat {l}) typ ∷ {Type l} -- ^ pattern with type signature
+    | PViewPat loca :: {l} exp ∷ {Exp l} pat ∷ (Pat {l}) -- ^ view patterns of the form @(/exp/ -> /pat/)@
+    | PRPat loca :: {l} rPats ∷ {[RPat l]} -- ^ regular list pattern
+    | PXTag loca :: {l} xName ∷ {XName l} pXAttrs ∷ {[PXAttr l]} mPat ∷ {Maybe (Pat l)} pats ∷ {[Pat l]} -- ^ XML element pattern
+    | PXETag loca :: {l} xName ∷ {XName l} pXAttrs ∷ {[PXAttr l]} mPat ∷ {Maybe (Pat l)} -- ^ XML singleton element pattern
+    | PXPcdata loca :: {l} string ∷ String -- ^ XML PCDATA pattern
+    | PXPatTag loca :: {l} pat ∷ (Pat {l}) -- ^ XML embedded pattern
+    | PXRPats  loca :: {l} rPats ∷ {[RPat l]} -- ^ XML regular list pattern
+    | PSplice loca :: {l} splice ∷ {Splice l} -- ^ template haskell splice pattern
+    | PQuasiQuote loca :: {l} string1 ∷ String string2 ∷ String -- ^ quasi quote pattern: @[$/name/| /string/ |]@
+    | PBangPat loca :: {l} pat ∷ (Pat {l}) -- ^ strict (bang) pattern: @f !x | ...@
+
+
+-- | An XML attribute in a pattern.
+data PXAttr l | PXAttr loca :: {l} xName ∷ {XName l} pat ∷ (Pat {l})
+
+
+-- | A regular pattern operator.
+data RPatOp l
+    | RPStar  loca :: {l}  -- ^ @*@ | 0 or more
+    | RPStarG loca :: {l}  -- ^ @*!@ | 0 or more, greedy
+    | RPPlus  loca :: {l}  -- ^ @+@ | 1 or more
+    | RPPlusG loca :: {l}  -- ^ @+!@ | 1 or more, greedy
+    | RPOpt   loca :: {l}  -- ^ @?@ | 0 or 1
+    | RPOptG  loca :: {l}  -- ^ @?!@ | 0 or 1, greedy
+
+
+-- | An entity in a regular pattern.
+data RPat l
+    | RPOp loca :: {l} rPat ∷ {RPat l} rPatOp ∷ {RPatOp l}   -- ^ operator pattern, e.g. pat*
+    | RPEither loca :: {l} rPat1 ∷ {RPat l} rPat2 ∷ {RPat l} -- ^ choice pattern, e.g. (1 | 2)
+    | RPSeq loca :: {l} rPats ∷ {[RPat l]} -- ^ sequence pattern, e.g. (| 1, 2, 3 |)
+    | RPGuard loca :: {l} pat ∷ (Pat {l}) stmts ∷ {[Stmt l]}   -- ^ guarded pattern, e.g. (| p | p < 3 |)
+    | RPCAs loca :: {l} name ∷ (Name {l}) rPat ∷ {RPat l}    -- ^ non-linear variable binding, e.g. (foo\@:(1 | 2))*
+    | RPAs loca :: {l} name ∷ (Name {l}) rPat ∷ {RPat l}     -- ^ linear variable binding, e.g. foo\@(1 | 2)
+    | RPParen loca :: {l} rPat ∷ {RPat l}           -- ^ parenthesised pattern, e.g. (2*)
+    | RPPat loca :: {l} pat ∷ (Pat {l})              -- ^ an ordinary pattern
+
+
+-- | An /fpat/ in a labeled record pattern.
+data PatField l
+    | PFieldPat loca :: {l} qName ∷ (QName {l}) pat ∷ (Pat {l})     -- ^ ordinary label-pattern pair
+    | PFieldPun loca :: {l} qName ∷ (QName {l})             -- ^ record field pun
+    | PFieldWildcard loca :: {l}                  -- ^ record field wildcard
+
+
+-- | A statement, representing both a /stmt/ in a @do@-expression,
+--   an ordinary /qual/ in a list comprehension, as well as a /stmt/
+--   in a pattern guard.
+data Stmt l
+    | Generator loca :: {l} pat ∷ (Pat {l}) exp ∷ {Exp l}
+                            -- ^ a generator: /pat/ @<-@ /exp/
+    | Qualifier loca :: {l} exp ∷ {Exp l}   -- ^ an /exp/ by itself: in a @do@-expression,
+                            --   an action whose result is discarded;
+                            --   in a list comprehension and pattern guard,
+                            --   a guard expression
+    | LetStmt loca :: {l} binds ∷ {Binds l}   -- ^ local bindings
+    | RecStmt loca :: {l} stmts ∷ {[Stmt l]}    -- ^ a recursive binding group for arrows
+
+
+-- | A general /transqual/ in a list comprehension,
+--   which could potentially be a transform of the kind
+--   enabled by TransformListComp.
+data QualStmt l
+    | QualStmt     loca :: {l} stmt ∷ {Stmt l}         -- ^ an ordinary statement
+    | ThenTrans    loca :: {l} exp ∷ {Exp l}          -- ^ @then@ /exp/
+    | ThenBy       loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l}  -- ^ @then@ /exp/ @by@ /exp/
+    | GroupBy      loca :: {l} exp ∷ {Exp l}          -- ^ @then@ @group@ @by@ /exp/
+    | GroupUsing   loca :: {l} exp ∷ {Exp l}          -- ^ @then@ @group@ @using@ /exp/
+    | GroupByUsing loca :: {l} exp1 ∷ {Exp l} exp2 ∷ {Exp l}  -- ^ @then@ @group@ @by@ /exp/ @using@ /exp/
+
+
+-- | An /fbind/ in a labeled construction or update expression.
+data FieldUpdate l
+    | FieldUpdate loca :: {l} qName ∷ (QName {l}) exp ∷ {Exp l}    -- ^ ordinary label-expresion pair
+    | FieldPun loca :: {l} qName ∷ (QName {l})               -- ^ record field pun
+    | FieldWildcard loca :: {l}                    -- ^ record field wildcard
+
+
+-- | An /alt/ alternative in a @case@ expression.
+data Alt l
+    | Alt loca :: {l} pat ∷ (Pat {l}) rhs ∷ (Rhs {l}) mBinds ∷ {Maybe (Binds l)}

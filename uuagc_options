@@ -1,0 +1,9 @@
+file : "src/Language/Haskell/AG/Syntax.ag"
+options : haskellsyntax
+
+file : "src/Language/Haskell/AG/SyntaxExt.ag"
+options : haskellsyntax, data
+
+file : "src/Language/Haskell/AG/Objects.ag"
+options : haskellsyntax, semfuns, catas, pretty, wrappers, signatures
+

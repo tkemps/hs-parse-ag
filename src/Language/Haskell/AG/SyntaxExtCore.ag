@@ -1,0 +1,14 @@
+
+type DeclList l = [Decl l]
+
+type MatchesList l = [Match l]
+
+data ObjectClass
+    | DataObj | TypeObj | TypeFamObj | FunctionObj
+
+data Object
+    | Object
+        name ∷ String
+	clazz ∷ ObjectClass 
+ 
+deriving ObjectClass Object : Show

@@ -1,0 +1,66 @@
+{
+{-# OPTIONS_GHC -fno-warn-unused-matches -fno-warn-unused-pattern-binds #-}
+{-# LANGUAGE UnicodeSyntax, DeriveDataTypeable, DeriveFoldable, DeriveFunctor, DeriveGeneric, DeriveTraversable, StandaloneDeriving, GeneralizedNewtypeDeriving, ScopedTypeVariables #-}
+module Language.Haskell.AG.Objects where
+
+import Data.Functor
+import Data.List
+import Data.Monoid (Monoid(..))
+import Data.Monoid.Unicode
+import Language.Haskell.Exts.Syntax
+import Language.Haskell.AG.SyntaxExt
+}
+
+include "SyntaxCore.ag"
+
+attr Decl DeclList MatchesList Match Pat Name DeclHead Match
+    inh objectClass ∷ ObjectClass
+
+attr Module Decl DeclList MatchesList Match Pat Name DeclHead Match
+    syn objs use {⊕} {∅} ∷ {[Object]}
+
+sem Name
+    | Ident lhs.objs = [Object @ident @lhs.objectClass]
+    | Symbol lhs.objs = [Object @symbol @lhs.objectClass]
+
+sem Decl
+    | DataDecl
+        declHead.objectClass = DataObj
+        lhs.objs = @declHead.objs
+    | TypeDecl
+        declHead.objectClass = TypeObj
+        lhs.objs = @declHead.objs
+    | TypeFamDecl
+        declHead.objectClass = TypeFamObj
+        lhs.objs = @declHead.objs
+    | FunBind
+        matches.objectClass = FunctionObj
+        lhs.objs = @matches.objs
+    | PatBind
+        pat.objectClass = FunctionObj
+        lhs.objs = @pat.objs
+
+
+{-
+sem DeclList MatchesList
+    | Cons
+        hd.objectClass = @lhs.objectClass
+        tl.objectClass = @lhs.objectClass
+    | Nil
+
+sem Match
+    | Match lhs.objs = @name.objs
+    | InfixMatch lhs.objs = @name.objs
+
+sem DeclHead
+    | DHead lhs.objs = @name.objs
+    | DHInfix lhs.objs = @name.objs
+    | DHParen lhs.objs = @declHead.objs
+    | DHApp lhs.objs = @declHead.objs
+
+sem Pat
+    | PVar lhs.objs = @name.objs
+
+sem Module
+    | Module lhs.objs = @decls.objs
+-}
